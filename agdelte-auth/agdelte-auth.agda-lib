@@ -1,0 +1,10 @@
+name: agdelte-auth
+include: .
+depend:
+  standard-library
+  agdelte
+-- Generic security library (extracted from the agdelte framework): JWT, signed URLs,
+-- role checks, HTTP auth middleware, and an auth client. Depends DOWN only on the
+-- agdelte framework (FFI.Crypto/Server/Time/Json, Core.Cmd). Domain-neutral — sits
+-- above the framework; consumed by domain libs (courses now; CRM when authz lands).
+-- Module names kept `Agdelte.Auth.*` so consumers' imports don't change.

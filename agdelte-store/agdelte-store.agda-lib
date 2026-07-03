@@ -1,0 +1,8 @@
+name: agdelte-store
+include: .
+depend:
+  standard-library
+-- Domain-agnostic embedded store: NatMap, IndexedMap, length-prefix+CRC Wire
+-- codec, WAL (walTxn/recovery), a parameterized Txn monad, and a self-contained
+-- FFI (MVar/modifyMVarMasked + durable WAL file ops). Depends ONLY on the
+-- standard library — usable by any domain (CRM, the video platform, …).

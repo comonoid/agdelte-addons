@@ -1,0 +1,8 @@
+name: agdelte-payments
+include: .
+depend:
+  standard-library
+-- Payment-provider clients (domain-agnostic). Currently the ЮKassa REST client
+-- (Agdelte.Payment.YooKassa); Stripe (Agdelte.Payment.Stripe) and a future
+-- provider-neutral interface can join here. Depends ONLY on the standard library
+-- (outbound HTTP is its own http-client FFI; no framework HTTP server needed).
