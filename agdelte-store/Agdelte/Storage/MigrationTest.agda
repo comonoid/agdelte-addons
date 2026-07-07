@@ -123,13 +123,13 @@ _ : up (mIndexU "user" "login")
   ≡ ("CREATE UNIQUE INDEX IF NOT EXISTS \"user_login_uidx\" ON \"user\" (\"login\");") ∷ []
 _ = refl
 _ : up (mIndexP "identity" "external_id")
-  ≡ ("CREATE INDEX IF NOT EXISTS \"identity_external_id_idx\" ON \"identity\" (\"external_id\");") ∷ []
+  ≡ ("CREATE INDEX IF NOT EXISTS \"identity_external_id_pidx\" ON \"identity\" (\"external_id\");") ∷ []
 _ = refl
 
 -- both roll back (DROP INDEX on the matching name)
 _ : down (mIndexU "user" "login") ≡ just (("DROP INDEX IF EXISTS \"user_login_uidx\";") ∷ [])
 _ = refl
-_ : down (mIndexP "identity" "external_id") ≡ just (("DROP INDEX IF EXISTS \"identity_external_id_idx\";") ∷ [])
+_ : down (mIndexP "identity" "external_id") ≡ just (("DROP INDEX IF EXISTS \"identity_external_id_pidx\";") ∷ [])
 _ = refl
 
 -- MODEL-INVISIBLE: neither touches the schema set (so byIx positions / migrate-watch are untouched)

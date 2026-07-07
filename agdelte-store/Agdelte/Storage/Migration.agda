@@ -60,6 +60,14 @@ private
   dropUidxStmt : String → String → String
   dropUidxStmt t c = "DROP INDEX IF EXISTS \"" <> t <> "_" <> c <> "_uidx\";"
 
+  -- perf-index name uses a DISTINCT `_pidx` suffix (not `_idx`) so a hardening index can never
+  -- collide with a byIx secondary index on the same column (which idxStmt names `_idx`).
+  pidxStmt : String → String → String
+  pidxStmt t c = "CREATE INDEX IF NOT EXISTS \"" <> t <> "_" <> c <> "_pidx\" ON \"" <> t <> "\" (\"" <> c <> "\");"
+
+  dropPidxStmt : String → String → String
+  dropPidxStmt t c = "DROP INDEX IF EXISTS \"" <> t <> "_" <> c <> "_pidx\";"
+
   defSql : String → String
   defSql d = if primStringEquality d "" then "" else " DEFAULT " <> d
 
@@ -75,7 +83,7 @@ up (mDropColumn t c) = ("ALTER TABLE \"" <> t <> "\" DROP COLUMN \"" <> c <> "\"
 up (mDropTable t)    = ("DROP TABLE IF EXISTS \"" <> t <> "\";") ∷ []
 up (mCreateSequence n) = ("CREATE SEQUENCE IF NOT EXISTS \"" <> n <> "\";") ∷ []
 up (mIndexU t c) = uidxStmt t c ∷ []
-up (mIndexP t c) = idxStmt t c ∷ []
+up (mIndexP t c) = pidxStmt t c ∷ []
 
 ------------------------------------------------------------------------
 -- Interpreter 2 — rollback SQL (`nothing` = irreversible, the runner refuses to roll past it)
@@ -90,7 +98,7 @@ down (mDropColumn _ _)  = nothing
 down (mDropTable _)     = nothing
 down (mCreateSequence n) = just (("DROP SEQUENCE IF EXISTS \"" <> n <> "\";") ∷ [])
 down (mIndexU t c) = just (dropUidxStmt t c ∷ [])
-down (mIndexP t c) = just (dropIdxStmt t c ∷ [])
+down (mIndexP t c) = just (dropPidxStmt t c ∷ [])
 
 ------------------------------------------------------------------------
 -- Interpreter 3 — the PURE MODEL over the schema set (the verification anchor)
