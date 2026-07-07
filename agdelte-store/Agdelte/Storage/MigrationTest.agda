@@ -13,6 +13,7 @@ open import Relation.Binary.PropositionalEquality using (_≡_; refl)
 open import Agdelte.Storage.Schema using (Schema; mkCol; idxCol; CNat; CStr; CBool; CMaybe; CFK)
 open import Agdelte.Storage.Migration using
   ( MigStep; mCreateTable; mCreateSequence; mAddColumn; mAddIndex; mDropIndex; mDropColumn; mDropTable
+  ; mIndexU; mIndexP
   ; up; down; migrate; SchemaSet
   ; checkStep; checkMigrations
   ; wfDupTable; wfNoTable; wfDupColumn; wfNoColumn; wfDupColInCreate; wfNestedMaybe )
@@ -111,4 +112,33 @@ _ = refl
 -- a nullable-of-nullable column
 _ : checkStep (mCreateTable "bad" (mkCol "id" CNat ∷ mkCol "x" (CMaybe (CMaybe CNat)) ∷ [])) []
   ≡ wfNestedMaybe "bad" "x" ∷ []
+_ = refl
+
+------------------------------------------------------------------------
+-- Hardening indexes (mIndexU/mIndexP) — perf + natural-key, MODEL-INVISIBLE (schema audit).
+------------------------------------------------------------------------
+
+-- forward SQL: UNIQUE vs plain, distinct index names (_uidx / _idx)
+_ : up (mIndexU "user" "login")
+  ≡ ("CREATE UNIQUE INDEX IF NOT EXISTS \"user_login_uidx\" ON \"user\" (\"login\");") ∷ []
+_ = refl
+_ : up (mIndexP "identity" "external_id")
+  ≡ ("CREATE INDEX IF NOT EXISTS \"identity_external_id_idx\" ON \"identity\" (\"external_id\");") ∷ []
+_ = refl
+
+-- both roll back (DROP INDEX on the matching name)
+_ : down (mIndexU "user" "login") ≡ just (("DROP INDEX IF EXISTS \"user_login_uidx\";") ∷ [])
+_ = refl
+_ : down (mIndexP "identity" "external_id") ≡ just (("DROP INDEX IF EXISTS \"identity_external_id_idx\";") ∷ [])
+_ = refl
+
+-- MODEL-INVISIBLE: neither touches the schema set (so byIx positions / migrate-watch are untouched)
+_ : migrate (mIndexU "acct" "email" ∷ mIndexP "acct" "email" ∷ []) (("acct" , acctV1) ∷ [])
+  ≡ ("acct" , acctV1) ∷ []
+_ = refl
+
+-- but still validated: a hardening index on a missing table/column is caught
+_ : checkStep (mIndexP "ghost" "x") [] ≡ wfNoTable "ghost" ∷ []
+_ = refl
+_ : checkStep (mIndexU "acct" "ghost") (("acct" , acctV1) ∷ []) ≡ wfNoColumn "acct" "ghost" ∷ []
 _ = refl

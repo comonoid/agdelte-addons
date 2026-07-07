@@ -37,6 +37,11 @@ data MigStep : Set where
   mDropColumn  : String → String → MigStep             -- irreversible (data gone)
   mDropTable   : String → MigStep                      -- irreversible
   mCreateSequence : String → MigStep                   -- surrogate-id source (invisible to the table model)
+  -- Schema-HARDENING indexes (perf + natural-key). MODEL-INVISIBLE by design: they emit a PG
+  -- index but do NOT mark the column `cindexed`, so they never enter the byIx position scheme
+  -- (idxCols) — that is the compile-time secondary-index layer, this is a deployment concern.
+  mIndexU : String → String → MigStep                  -- CREATE UNIQUE INDEX (table, column)
+  mIndexP : String → String → MigStep                  -- CREATE INDEX        (table, column)
 
 ------------------------------------------------------------------------
 -- Interpreter 1 — forward SQL (statement-per-element, audit A1)
@@ -48,6 +53,12 @@ private
 
   dropIdxStmt : String → String → String
   dropIdxStmt t c = "DROP INDEX IF EXISTS \"" <> t <> "_" <> c <> "_idx\";"
+
+  uidxStmt : String → String → String
+  uidxStmt t c = "CREATE UNIQUE INDEX IF NOT EXISTS \"" <> t <> "_" <> c <> "_uidx\" ON \"" <> t <> "\" (\"" <> c <> "\");"
+
+  dropUidxStmt : String → String → String
+  dropUidxStmt t c = "DROP INDEX IF EXISTS \"" <> t <> "_" <> c <> "_uidx\";"
 
   defSql : String → String
   defSql d = if primStringEquality d "" then "" else " DEFAULT " <> d
@@ -63,6 +74,8 @@ up (mDropIndex t c)  = dropIdxStmt t c ∷ []
 up (mDropColumn t c) = ("ALTER TABLE \"" <> t <> "\" DROP COLUMN \"" <> c <> "\";") ∷ []
 up (mDropTable t)    = ("DROP TABLE IF EXISTS \"" <> t <> "\";") ∷ []
 up (mCreateSequence n) = ("CREATE SEQUENCE IF NOT EXISTS \"" <> n <> "\";") ∷ []
+up (mIndexU t c) = uidxStmt t c ∷ []
+up (mIndexP t c) = idxStmt t c ∷ []
 
 ------------------------------------------------------------------------
 -- Interpreter 2 — rollback SQL (`nothing` = irreversible, the runner refuses to roll past it)
@@ -76,6 +89,8 @@ down (mDropIndex t c)   = just (idxStmt t c ∷ [])
 down (mDropColumn _ _)  = nothing
 down (mDropTable _)     = nothing
 down (mCreateSequence n) = just (("DROP SEQUENCE IF EXISTS \"" <> n <> "\";") ∷ [])
+down (mIndexU t c) = just (dropUidxStmt t c ∷ [])
+down (mIndexP t c) = just (dropIdxStmt t c ∷ [])
 
 ------------------------------------------------------------------------
 -- Interpreter 3 — the PURE MODEL over the schema set (the verification anchor)
@@ -103,6 +118,8 @@ applyStep (mDropIndex t c)   ss = adjust t (setIdx false c) ss
 applyStep (mDropColumn t c)  ss = adjust t (filterᵇ (λ k → not (primStringEquality (cname k) c))) ss
 applyStep (mDropTable t)     ss = filterᵇ (λ p → not (primStringEquality (proj₁ p) t)) ss
 applyStep (mCreateSequence _) ss = ss        -- sequences are not part of the table model
+applyStep (mIndexU _ _) ss = ss              -- hardening indexes are model-invisible (see MigStep)
+applyStep (mIndexP _ _) ss = ss
 
 -- the whole chain, oldest first
 migrate : List MigStep → SchemaSet → SchemaSet
@@ -169,6 +186,13 @@ checkStep (mDropColumn t c) ss =
 checkStep (mDropTable t) ss =
   if hasTable t ss then [] else wfNoTable t ∷ []
 checkStep (mCreateSequence _) _ = []
+-- a hardening index must target an existing table + column (catches a typo in the index list)
+checkStep (mIndexU t c) ss =
+  if not (hasTable t ss) then wfNoTable t ∷ []
+  else (if hasCol c (colsOf t ss) then [] else wfNoColumn t c ∷ [])
+checkStep (mIndexP t c) ss =
+  if not (hasTable t ss) then wfNoTable t ∷ []
+  else (if hasCol c (colsOf t ss) then [] else wfNoColumn t c ∷ [])
 
 -- all errors across the chain (empty ⇒ wellformed); the model evolves step by step.
 checkMigrations : List MigStep → SchemaSet → List WfError
