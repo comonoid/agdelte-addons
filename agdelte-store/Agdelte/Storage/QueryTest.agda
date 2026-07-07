@@ -34,12 +34,13 @@ r4 = 4 , 5 , 2 , "match too" , tt
 _ : runCount metaKpi (r1 ∷ r2 ∷ r3 ∷ r4 ∷ []) ≡ 2
 _ = refl
 
--- compiler: exactly this SQL, nothing implicit
+-- compiler: exactly this SQL, nothing implicit (no trailing ";" — G1: runs inside a queryConn
+-- subquery wrapper; COUNT(*) aliased so the JSON result carries a "count" field)
 _ : compileCount metaKpi ≡
-    "SELECT COUNT(*) FROM \"knowledge\" WHERE \"subject\" = 5 AND \"tenant\" = 2;"
+    "SELECT COUNT(*) AS \"count\" FROM \"knowledge\" WHERE \"subject\" = 5 AND \"tenant\" = 2"
 _ = refl
 
 -- degenerate query (no predicates) stays deterministic: WHERE TRUE
 _ : compileCount (countWhere {s = kSchema} "knowledge" []) ≡
-    "SELECT COUNT(*) FROM \"knowledge\" WHERE TRUE;"
+    "SELECT COUNT(*) AS \"count\" FROM \"knowledge\" WHERE TRUE"
 _ = refl

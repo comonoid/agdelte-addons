@@ -213,6 +213,16 @@ decodeIds j with parseRows j
     ... | just n | just ns = just (n ∷ ns)
     ... | _      | _       = nothing
 
+-- a single aggregate scalar (COUNT/SUM…): the named ℕ field of the FIRST object of the result
+-- (e.g. `[{"count":3}]` → just 3). nothing = empty result / missing / non-ℕ field.
+decodeFirstNat : String → String → Maybe ℕ
+decodeFirstNat col j with parseRows j
+... | nothing        = nothing
+... | just []        = nothing
+... | just (o ∷ _) with lookupO col o
+...   | just (sNat n) = just n
+...   | _             = nothing
+
 -- the surrogate pk of a typed row = its FIRST column (by Schema convention), when ℕ-valued
 rowPk : (s : Schema) → Row s → Maybe ℕ
 rowPk []      _        = nothing

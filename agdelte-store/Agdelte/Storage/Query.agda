@@ -95,5 +95,8 @@ private
   conj (p ∷ [])     = predSql p
   conj (p ∷ q ∷ ps) = predSql p <> " AND " <> conj (q ∷ ps)
 
+-- NB: NO trailing ";" — this SELECT is executed through the read path (queryConn), which wraps it
+-- as `… FROM (<sql>) _q`, and a ";" inside a subquery is a syntax error (the same G1 rule the
+-- Storage.SQL SELECT generators follow). Direct-exec paths tolerate its absence.
 compileCount : ∀ {s} → Count s → String
-compileCount q = "SELECT COUNT(*) FROM \"" <> table q <> "\" WHERE " <> conj (preds q) <> ";"
+compileCount q = "SELECT COUNT(*) AS \"count\" FROM \"" <> table q <> "\" WHERE " <> conj (preds q)
