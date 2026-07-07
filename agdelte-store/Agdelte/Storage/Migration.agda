@@ -107,3 +107,75 @@ applyStep (mCreateSequence _) ss = ss        -- sequences are not part of the ta
 -- the whole chain, oldest first
 migrate : List MigStep → SchemaSet → SchemaSet
 migrate steps ss = foldl (λ acc st → applyStep st acc) ss steps
+
+------------------------------------------------------------------------
+-- Interpreter 4 — wellformedness of a migration chain (PURE; refl-gated in the registry).
+-- Each step is checked against the model AS EVOLVED by all prior steps, so structural mistakes
+-- (create an existing table, add a duplicate/absent column, index/drop a missing column, drop a
+-- missing table, a nullable-of-nullable column) are caught at TYPECHECK, before any SQL runs.
+------------------------------------------------------------------------
+
+data WfError : Set where
+  wfDupTable       : String → WfError            -- CREATE TABLE whose name already exists
+  wfNoTable        : String → WfError            -- op targets a table not in the model
+  wfDupColumn      : String → String → WfError   -- ADD COLUMN that already exists (table, col)
+  wfNoColumn       : String → String → WfError   -- INDEX/DROP a column that isn't there
+  wfDupColInCreate : String → String → WfError   -- duplicate column name inside one CREATE TABLE
+  wfNestedMaybe    : String → String → WfError   -- CMaybe (CMaybe _) — nullable of nullable
+
+private
+  hasTable : String → SchemaSet → Bool
+  hasTable t [] = false
+  hasTable t ((n , _) ∷ ss) = if primStringEquality n t then true else hasTable t ss
+
+  colsOf : String → SchemaSet → Schema
+  colsOf t [] = []
+  colsOf t ((n , s) ∷ ss) = if primStringEquality n t then s else colsOf t ss
+
+  hasCol : String → Schema → Bool
+  hasCol c [] = false
+  hasCol c (k ∷ ks) = if primStringEquality (cname k) c then true else hasCol c ks
+
+  nested? : ColTy → Bool
+  nested? (CMaybe (CMaybe _)) = true
+  nested? _                   = false
+
+  dupNames : Schema → List String                 -- names that recur (reported on the 2nd hit)
+  dupNames []       = []
+  dupNames (k ∷ ks) = (if hasCol (cname k) ks then cname k ∷ [] else []) ++ dupNames ks
+
+  nestedCols : Schema → List String
+  nestedCols []       = []
+  nestedCols (k ∷ ks) = (if nested? (cty k) then cname k ∷ [] else []) ++ nestedCols ks
+
+checkStep : MigStep → SchemaSet → List WfError
+checkStep (mCreateTable n s) ss =
+  (if hasTable n ss then wfDupTable n ∷ [] else [])
+    ++ map (wfDupColInCreate n) (dupNames s)
+    ++ map (wfNestedMaybe n) (nestedCols s)
+checkStep (mAddColumn t c _) ss =
+  if not (hasTable t ss) then wfNoTable t ∷ []
+  else (if hasCol (cname c) (colsOf t ss) then wfDupColumn t (cname c) ∷ [] else [])
+         ++ (if nested? (cty c) then wfNestedMaybe t (cname c) ∷ [] else [])
+checkStep (mAddIndex t c) ss =
+  if not (hasTable t ss) then wfNoTable t ∷ []
+  else (if hasCol c (colsOf t ss) then [] else wfNoColumn t c ∷ [])
+checkStep (mDropIndex t c) ss =
+  if not (hasTable t ss) then wfNoTable t ∷ []
+  else (if hasCol c (colsOf t ss) then [] else wfNoColumn t c ∷ [])
+checkStep (mDropColumn t c) ss =
+  if not (hasTable t ss) then wfNoTable t ∷ []
+  else (if hasCol c (colsOf t ss) then [] else wfNoColumn t c ∷ [])
+checkStep (mDropTable t) ss =
+  if hasTable t ss then [] else wfNoTable t ∷ []
+checkStep (mCreateSequence _) _ = []
+
+-- all errors across the chain (empty ⇒ wellformed); the model evolves step by step.
+checkMigrations : List MigStep → SchemaSet → List WfError
+checkMigrations []         _  = []
+checkMigrations (st ∷ sts) ss = checkStep st ss ++ checkMigrations sts (applyStep st ss)
+
+wellFormed : List MigStep → SchemaSet → Bool
+wellFormed steps ss with checkMigrations steps ss
+... | [] = true
+... | _  = false

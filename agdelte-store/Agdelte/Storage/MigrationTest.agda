@@ -13,7 +13,9 @@ open import Relation.Binary.PropositionalEquality using (_≡_; refl)
 open import Agdelte.Storage.Schema using (Schema; mkCol; idxCol; CNat; CStr; CBool; CMaybe; CFK)
 open import Agdelte.Storage.Migration using
   ( MigStep; mCreateTable; mCreateSequence; mAddColumn; mAddIndex; mDropIndex; mDropColumn; mDropTable
-  ; up; down; migrate; SchemaSet )
+  ; up; down; migrate; SchemaSet
+  ; checkStep; checkMigrations
+  ; wfDupTable; wfNoTable; wfDupColumn; wfNoColumn; wfDupColInCreate; wfNestedMaybe )
 
 -- v1 of a table, as it once shipped
 acctV1 : Schema
@@ -74,4 +76,39 @@ _ = refl
 _ : up (mCreateSequence "cxm_id_seq") ≡ ("CREATE SEQUENCE IF NOT EXISTS \"cxm_id_seq\";") ∷ []
 _ = refl
 _ : down (mCreateSequence "cxm_id_seq") ≡ just (("DROP SEQUENCE IF EXISTS \"cxm_id_seq\";") ∷ [])
+_ = refl
+
+------------------------------------------------------------------------
+-- Wellformedness (interpreter 4). POSITIVE: the good chain is clean. NEGATIVES: the checker has
+-- TEETH — each structural mistake is reported (a `λ _ _ → []` stub would fail every case below).
+------------------------------------------------------------------------
+
+_ : checkMigrations history [] ≡ []
+_ = refl
+
+-- create a table that already exists
+_ : checkStep (mCreateTable "acct" acctV1) (("acct" , acctV1) ∷ []) ≡ wfDupTable "acct" ∷ []
+_ = refl
+
+-- add a column to a table that isn't there
+_ : checkStep (mAddColumn "ghost" (mkCol "x" CNat) "") [] ≡ wfNoTable "ghost" ∷ []
+_ = refl
+
+-- add a column that already exists
+_ : checkStep (mAddColumn "acct" (mkCol "email" CStr) "") (("acct" , acctV1) ∷ [])
+  ≡ wfDupColumn "acct" "email" ∷ []
+_ = refl
+
+-- drop / index a column that isn't there
+_ : checkStep (mDropColumn "acct" "ghost") (("acct" , acctV1) ∷ []) ≡ wfNoColumn "acct" "ghost" ∷ []
+_ = refl
+
+-- duplicate column name inside one CREATE TABLE
+_ : checkStep (mCreateTable "dup" (mkCol "id" CNat ∷ mkCol "x" CNat ∷ mkCol "x" CStr ∷ []))  []
+  ≡ wfDupColInCreate "dup" "x" ∷ []
+_ = refl
+
+-- a nullable-of-nullable column
+_ : checkStep (mCreateTable "bad" (mkCol "id" CNat ∷ mkCol "x" (CMaybe (CMaybe CNat)) ∷ [])) []
+  ≡ wfNestedMaybe "bad" "x" ∷ []
 _ = refl
