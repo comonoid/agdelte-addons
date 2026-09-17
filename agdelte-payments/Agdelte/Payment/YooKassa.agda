@@ -9,9 +9,10 @@
 -- Primitives:
 --   newHttpManager       — TLS connection manager (create once at startup)
 --   createPayment        — POST /v3/payments → PaymentOk paymentId confirmUrl | PaymentError
---   getPaymentStatusRaw  — GET /v3/payments/{id} → authoritative status (never trust the webhook body)
+--   getPaymentStatusRaw  — GET /v3/payments/{id} → status re-fetch (available when a
+--                          non-webhook consumer appears; unused API so far)
 --   parseWebhookFields   — (event, object.id) from a webhook body (nested, injection-safe)
---   verifyWebhookSig     — HMAC-SHA256 body check (defense-in-depth; status re-fetch is authoritative)
+--   verifyWebhookSig     — HMAC-SHA256 body check (defense-in-depth)
 module Agdelte.Payment.YooKassa where
 
 open import Agda.Builtin.IO using (IO)
@@ -20,13 +21,11 @@ open import Agda.Builtin.Bool using (Bool)
 open import Data.Nat using (ℕ)
 open import Data.Maybe using (Maybe; just; nothing)
 
--- own IO combinators — keep the client independent of the framework FFI
-postulate
-  _>>=_ : ∀ {A B : Set} → IO A → (A → IO B) → IO B
-  pure  : ∀ {A : Set} → A → IO A
-{-# COMPILE GHC _>>=_ = \_ _ -> (>>=) #-}
-{-# COMPILE GHC pure  = \_ -> return #-}
-infixl 1 _>>=_
+-- IO plumbing (combinators + the ONE HttpManager type) comes from Common —
+-- a second postulate of HttpManager here would be a nominally distinct
+-- Agda type and PayConfig would not typecheck against Stripe functions.
+open import Agdelte.Payment.Common
+  using (HttpManager; newHttpManager; _>>=_; pure)
 
 ------------------------------------------------------------------------
 -- All Haskell in ONE import-first FOREIGN block (MAlonzo strands the auto
@@ -35,7 +34,6 @@ infixl 1 _>>=_
 
 {-# FOREIGN GHC
   import qualified Network.HTTP.Client as HC
-  import qualified Network.HTTP.Client.TLS as TLS
   import Network.HTTP.Types.Status (statusCode)
   import qualified Data.Text as T
   import qualified Data.Text.Encoding as TE
@@ -49,12 +47,8 @@ infixl 1 _>>=_
   import Crypto.Hash (SHA256)
   import qualified Data.ByteArray as BA
 
-  type HttpManagerT = HC.Manager
   type RawTripleH = (Integer, T.Text, T.Text)
   type RawPairH   = (T.Text, T.Text)
-
-  newHttpManagerHS :: IO HC.Manager
-  newHttpManagerHS = TLS.newTlsManager
 
   -- POST /v3/payments. (0, paymentId, confirmUrl) on success; (httpStatus, errText, "") on error.
   createPaymentRawHS :: HC.Manager -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text
@@ -161,16 +155,6 @@ infixl 1 _>>=_
   #-}
 
 ------------------------------------------------------------------------
--- Connection manager
-------------------------------------------------------------------------
-
-postulate
-  HttpManager    : Set
-  newHttpManager : IO HttpManager
-{-# COMPILE GHC HttpManager    = type HttpManagerT #-}
-{-# COMPILE GHC newHttpManager = newHttpManagerHS  #-}
-
-------------------------------------------------------------------------
 -- FFI boundary tuples (Agda's Σ can't cross a COMPILE GHC type → Haskell tuples)
 ------------------------------------------------------------------------
 
@@ -202,7 +186,8 @@ data PaymentResult : Set where
 postulate
   createPaymentRaw : HttpManager → String → String → String → String → String → String → String
                    → IO RawTriple
-  -- authoritative status fetch (source of truth; the webhook body is NOT trusted)
+  -- status fetch for non-webhook consumers (the webhook path itself trusts the
+  -- SIGNED event after verifyWebhookSig — no re-fetch in webhookTx)
   getPaymentStatusRaw : HttpManager → String → String → String → IO RawTriple
   -- (event, object.id) from a webhook body
   parseWebhookFields : String → Maybe RawPair
