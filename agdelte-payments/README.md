@@ -9,7 +9,9 @@ the standard library.
   `parseWebhookFields` (nested, injection-safe), `verifyWebhookSig` (HMAC-SHA256
   defense-in-depth). Outbound HTTP is the module's own `http-client`/TLS FFI — no
   framework HTTP server needed.
-- `Agdelte.Payment.Stripe` — the Stripe Checkout client: `createCheckoutSession`
+- `Agdelte.Payment.Stripe` — the Stripe Checkout client (base URL overridable
+  via `STRIPE_API_BASE` env, default `https://api.stripe.com` — for stripe-mock
+  and test rigs): `createCheckoutSession`
   (POST /v1/checkout/sessions, form-encoded body, `Idempotency-Key`, optional
   `Stripe-Account` header), `parseWebhookFields` (`(type, data.object.id)`,
   nested, injection-safe), `verifyWebhookSig` (`Stripe-Signature`:

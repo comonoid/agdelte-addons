@@ -21,6 +21,8 @@ open import Agda.Builtin.String using (String)
 open import Agda.Builtin.Bool using (Bool)
 open import Data.Nat using (ℕ)
 open import Data.Maybe using (Maybe; just; nothing)
+open import Data.Bool using (if_then_else_)
+open import Data.String.Properties using (_==_)
 
 open import Agdelte.Payment.Common
   using (HttpManager; _>>=_; pure)
@@ -33,6 +35,7 @@ open import Agdelte.Payment.Common
 {-# FOREIGN GHC
   import qualified Network.HTTP.Client as HC
   import Network.HTTP.Types.Status (statusCode)
+  import System.Environment (lookupEnv)
   import qualified Data.Text as T
   import qualified Data.Text.Encoding as TE
   import qualified Data.ByteString.Lazy as LBS
@@ -41,6 +44,8 @@ open import Agdelte.Payment.Common
   import qualified Data.Aeson.Key as K
   import Data.Maybe (mapMaybe)
   import Control.Exception (try, SomeException)
+  import qualified Data.ByteString as BS
+  import Data.Word (Word8)
   import Crypto.MAC.HMAC (HMAC, hmac, hmacGetDigest)
   import Crypto.Hash (SHA256)
   import qualified Data.ByteArray as BA
@@ -48,15 +53,20 @@ open import Agdelte.Payment.Common
   type RawTripleH = (Integer, T.Text, T.Text)
   type RawPairH   = (T.Text, T.Text)
 
-  -- minimal application/x-www-form-urlencoded encoder (bytes via Data.Char ord —
-  -- form values here are ASCII: ids, urls, amounts, hex digests)
+  -- application/x-www-form-urlencoded: UTF-8 байты значения, percent-encoding.
+  -- (раньше было посимвольно по fromEnum — работало только для ASCII; на кириллице
+  -- в description падало "index too large" и запрос молча умирал)
   formEnc :: T.Text -> String
-  formEnc = concatMap ch . T.unpack
-    where hexD d = "0123456789ABCDEF" !! d
-          ch c = let n = fromEnum c in
-            if n <= 32 || n >= 127 || c `elem` ("=&+[]%" :: String)
-            then ['%', hexD (n `div` 16), hexD (n `mod` 16)]
-            else [c]
+  formEnc = concatMap ch . BS.unpack . TE.encodeUtf8
+    where
+      hex = "0123456789ABCDEF" :: String
+      ch :: Word8 -> String
+      ch w | (w >= 65 && w <= 90) || (w >= 97 && w <= 122)   -- A-Z a-z
+             || (w >= 48 && w <= 57)                        -- 0-9
+             || w == 45 || w == 95 || w == 46 || w == 126   -- - _ . ~
+             = [toEnum (fromIntegral w)]
+           | otherwise =
+               ['%', hex !! (fromIntegral w `div` 16), hex !! (fromIntegral w `mod` 16)]
 
   formBody :: [(T.Text, T.Text)] -> String
   formBody fs = concat [ formEnc k ++ "=" ++ formEnc v ++ "&" | (k, v) <- fs ]
@@ -92,7 +102,10 @@ open import Agdelte.Payment.Common
           , ("Idempotency-Key", TE.encodeUtf8 idemKey)
           , ("Authorization", authHeader)
           ] ++ [ ("Stripe-Account", TE.encodeUtf8 account) | account /= T.empty ]
-    initReq <- HC.parseRequest "POST https://api.stripe.com/v1/checkout/sessions"
+    -- базовый URL: STRIPE_API_BASE (тесты/эмулятор stripe-mock), дефолт — боевой API
+    mbBase <- lookupEnv "STRIPE_API_BASE"
+    let baseUrl = maybe "https://api.stripe.com" id mbBase
+    initReq <- HC.parseRequest ("POST " ++ baseUrl ++ "/v1/checkout/sessions")
     let req = initReq
               { HC.requestBody = HC.RequestBodyLBS body
               , HC.requestHeaders = headers
@@ -218,5 +231,9 @@ createCheckoutSession mgr account key cur amt desc success cancel cref meta idem
   where
     open import Data.Nat using (zero; suc)
     resolve : ℕ → String → String → IO PaymentResult
-    resolve zero    sid url = pure (CheckoutOk sid url)
+    -- успех: (0, sessionId, url); ошибка: (httpStatus|0, errText, "").
+    -- 0 Double-books (успех и сетевой сбой Haskell-клиента), различаем по url:
+    -- пустой url при status 0 = сетевая ошибка → CheckoutError (не маскировать!).
+    resolve zero    sid url = pure (if url == "" then CheckoutError 0 sid
+                                    else CheckoutOk sid url)
     resolve (suc n) err _   = pure (CheckoutError (suc n) err)
