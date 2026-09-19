@@ -6,9 +6,25 @@ the standard library.
 - `Agdelte.Payment.YooKassa` — the ЮKassa (YooKassa) REST client: `createPayment`
   (POST /v3/payments → confirmation URL), `getPaymentStatusRaw` (status re-fetch
   for non-webhook consumers; the webhook path itself trusts the SIGNED event),
-  `parseWebhookFields` (nested, injection-safe), `verifyWebhookSig` (HMAC-SHA256
+  `parseWebhookFieldsRaw` (nested, injection-safe), `verifyWebhookSig` (HMAC-SHA256
   defense-in-depth). Outbound HTTP is the module's own `http-client`/TLS FFI — no
-  framework HTTP server needed.
+  framework HTTP server needed. Base URL overridable via `YOOKASSA_API_BASE` env
+  (default `https://api.yookassa.ru` — for test rigs).
+  Typed layer (mirrors Stripe's): `Currency` is an enum straight from the
+  OpenAPI spec (`components.schemas.CurrencyCode`); amounts are `Positive`
+  (minor units, zero unrepresentable); `PaymentOk` carries a PROOF
+  `url ≢ ""`; `parseWebhookFields` returns a typed `YooKassaEvent`
+  (`PaymentSucceeded` / `PaymentCanceled` / `Unrecognized`) so the server
+  dispatcher is exhaustive by construction.
+- `Agdelte.Payment.YooKassaForm` — Agda mirror of the Haskell `fmtKop` amount
+  formatter (kopecks → `"R.KK"`, contract from the spec's
+  `MonetaryAmount.value`). Level-3 invariant: the output NEVER contains raw
+  `"` or `\` (JSON-safe by construction — digits via literal `Fin 10` cases,
+  whole part by well-founded recursion). Spec-derived amount vectors live in
+  `YooKassaVectors`; generator: `scripts/gen-yookassa-vectors.mjs` reads the
+  YooKassa OpenAPI spec (`spec/yookassa-openapi.yaml`, NOT committed,
+  https://yookassa.ru/developers/api/yookassa-openapi-specification.yaml) and
+  cross-checks the `CurrencyCode` enum against the client.
 - `Agdelte.Payment.Stripe` — the Stripe Checkout client (base URL overridable
   via `STRIPE_API_BASE` env, default `https://api.stripe.com` — for stripe-mock
   and test rigs): `createCheckoutSession`
