@@ -23,8 +23,16 @@ open import Agda.Builtin.String using (String)
 
   type HttpManagerT = HC.Manager
 
+  -- Явные таймауты: провайдерский HTTP-вызов не должен висеть вечно (дефолт
+  -- defaultManagerSettings = 30s «тихо», здесь — явные 15s и keep-alive 60s).
   newHttpManagerHS :: IO HC.Manager
-  newHttpManagerHS = TLS.newTlsManager
+  newHttpManagerHS = HC.newManager settings
+    where
+      -- TLS.tlsManagerSettings :: HC.ManagerSettings (http-client-tls) с ЯВНЫМ
+      -- responseTimeout 15s (дефолт менеджера «тихий», провайдерский вызов
+      -- не должен висеть вечно)
+      settings = TLS.tlsManagerSettings
+        { HC.managerResponseTimeout = HC.responseTimeoutMicro 15000000 }
   #-}
 
 ------------------------------------------------------------------------

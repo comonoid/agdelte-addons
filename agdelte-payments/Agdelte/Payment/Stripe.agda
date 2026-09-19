@@ -19,11 +19,17 @@ module Agdelte.Payment.Stripe where
 open import Agda.Builtin.IO using (IO)
 open import Agda.Builtin.String using (String)
 open import Agda.Builtin.Bool using (Bool)
-open import Data.Nat using (ℕ)
+open import Data.Nat using (ℕ; zero; suc)
+open import Data.Bool using (Bool; true; _∧_)
+open import Data.List using (List; []; _∷_)
 open import Data.Maybe using (Maybe; just; nothing)
+open import Data.String using (String; toList)
+open import Agda.Builtin.String using (primStringToList)
 open import Data.String.Properties using (_≟_)
-open import Relation.Nullary using (¬_)
+open import Relation.Nullary using (¬_; yes; no)
 open import Relation.Binary.PropositionalEquality using (_≡_)
+open import Agda.Builtin.Char
+  using (Char; primIsLower; primIsAscii)
 
 open import Agdelte.Payment.Common
   using (HttpManager; _>>=_; pure)
@@ -213,28 +219,79 @@ postulate
   createCheckoutSessionRaw : HttpManager → String → String → String → String → String → String
                            → String → String → String → String
                            → IO RawTriple
-  -- (type, data.object.id) from a webhook body
-  parseWebhookFields : String → Maybe RawPair
+  -- (type, data.object.id) from a webhook body (raw FFI layer; the typed view is
+  -- parseWebhookFields below)
+  parseWebhookFieldsRaw : String → Maybe RawPair
   -- Stripe-Signature check; `now` (unix seconds) passed in from the caller
   verifyWebhookSig : String → String → String → String → Bool
 {-# COMPILE GHC createCheckoutSessionRaw = createCheckoutSessionRawHS #-}
-{-# COMPILE GHC parseWebhookFields       = parseWebhookFieldsHS       #-}
+{-# COMPILE GHC parseWebhookFieldsRaw    = parseWebhookFieldsHS       #-}
 {-# COMPILE GHC verifyWebhookSig         = verifyWebhookSigHS         #-}
 
+------------------------------------------------------------------------
+-- Типизированные валюта и сумма (Ур.1): невалидные конфиги непредставимы
+------------------------------------------------------------------------
+
+-- Валюта: НЕ-пустой СТРОЧНЫЙ ISO-код ("usd"/"eur"); умный конструктор
+-- mkCurrency = парсер, верхний регистр/пустота отклоняются до сети.
+data Currency : Set where
+  isoCur : (code : String) → ¬ (code ≡ "") → Currency
+
+curCode : Currency → String
+curCode (isoCur c _) = c
+
+-- все символы — строчные ASCII-латинские буквы (a-z)
+lowerIsoᵇ : List Char → Bool
+lowerIsoᵇ [] = true
+lowerIsoᵇ (c ∷ cs) = (primIsAscii c ∧ primIsLower c) ∧ lowerIsoᵇ cs
+
+mkCurrency : String → Maybe Currency
+mkCurrency c with lowerIsoᵇ (primStringToList c) | c ≟ ""
+... | true  | no ne = just (isoCur c ne)
+... | _     | _     = nothing
+
+-- Сумма: натуральная, > 0 (минорные единицы); ноль непредставим.
+data Positive : Set where
+  posNat : (n : ℕ) → ¬ (n ≡ zero) → Positive
+
+amountOf : Positive → ℕ
+amountOf (posNat n _) = n
+
+mkPositive : ℕ → Maybe Positive
+mkPositive zero    = nothing
+mkPositive (suc n) = just (posNat (suc n) λ ())
+
+------------------------------------------------------------------------
+-- Ур.2: события вебхука как тип — диспетчер исчерпывающий по построению
+------------------------------------------------------------------------
+
+data StripeEvent : Set where
+  SessionCompleted : (sid : String) → StripeEvent   -- checkout.session.completed, session id
+  Unrecognized     : StripeEvent                    -- чужой/неизвестный type или непарсируемое тело
+
+parseWebhookFields : String → StripeEvent
+parseWebhookFields body with parseWebhookFieldsRaw body
+... | nothing                          = Unrecognized
+... | just pr with rpFst pr ≟ "checkout.session.completed"
+...   | yes _ = SessionCompleted (rpSnd pr)
+...   | no  _ = Unrecognized
+
 -- | Create a Checkout Session. account ("" = no Stripe-Account header)/
--- secretKey/currency (ISO-4217, "usd"/"eur"; lowercased here)/amount (minor
--- units: cents for usd/eur, decimal string)/description/successUrl
--- (absolute https, with {CHECKOUT_SESSION_ID})/cancelUrl/clientRef/
--- metadata-json/idempotencyKey → CheckoutOk | CheckoutError.
-createCheckoutSession : HttpManager → String → String → String → String → String → String
+-- secretKey/currency (типизированная: непустой строчный ISO-код — mkCurrency)/
+-- amount (типизированная: натуральная > 0, минорные единицы — mkPositive)/
+-- description/successUrl (absolute https, with {CHECKOUT_SESSION_ID})/cancelUrl/
+-- clientRef/metadata-json/idempotencyKey → CheckoutOk | CheckoutError.
+createCheckoutSession : HttpManager → String → String → Currency → Positive → String → String
                       → String → String → String → String
                       → IO PaymentResult
 createCheckoutSession mgr account key cur amt desc success cancel cref meta idem =
-  createCheckoutSessionRaw mgr account key cur amt desc success cancel cref meta idem >>= λ r →
+  createCheckoutSessionRaw mgr account key (curCode cur)
+    (natStr (amountOf amt)) desc success cancel cref meta idem >>= λ r →
   resolve (rtNat r) (rtFst r) (rtSnd r)
   where
-    open import Data.Nat using (zero; suc)
-    open import Relation.Nullary using (yes; no)
+    open import Data.Nat.Show using (show)
+    natStr : ℕ → String
+    natStr = show
     resolve : ℕ → String → String → IO PaymentResult
     -- успех: (0, sessionId, url); ошибка: (httpStatus|0, errText, "").
     -- 0 Double-books (успех и сетевой сбой Haskell-клиента), различаем по url:
