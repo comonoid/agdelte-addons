@@ -17,10 +17,9 @@
 //   curl -sL -o spec/openapi.json https://raw.githubusercontent.com/stripe/openapi/master/openapi/spec3.json
 //   node scripts/gen-form-vectors.mjs
 //
-// ВАЖНО (известное ограничение энкодера, см. шапку StripeForm.agda):
-// codepoints >= 0x10000 (эмодзи/астрал) энкодер выдаёт 3-байтовой формой —
-// здесь такие символы в векторы НЕ включаются, чтобы не портить зелёный прогон
-// известным багом; фикс астрала — отдельная задача.
+// Астральная плоскость (эмодзи): энкодер починен на честный 4-байтовый
+// UTF-8 (см. шапку StripeForm.agda), поэтому астральные пробы ВКЛЮЧЕНЫ
+// в векторы наравне с остальными и пинят фикс зеркалом с Haskell.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -75,6 +74,7 @@ function probeField(key, valueSet, maxLen) {
 
 const standardProbes = [
   ["ascii", "cs_test_123-ok"],
+  ["emoji", "оплата 💳 曲🎉"],
   ["unicode", "Путь в точку — 10 встреч"],
   ["cjk", "中文キー"],
   ["specials", "a=b&c+d e%f~g"],           // ~ остаётся сырым (RFC 3986 unreserved)

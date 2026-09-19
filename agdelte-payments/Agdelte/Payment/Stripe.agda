@@ -20,7 +20,7 @@ open import Agda.Builtin.IO using (IO)
 open import Agda.Builtin.String using (String)
 open import Agda.Builtin.Bool using (Bool)
 open import Data.Nat using (ℕ; zero; suc)
-open import Data.Bool using (Bool; true; _∧_)
+open import Data.Bool using (Bool; true; false; _∧_)
 open import Data.List using (List; []; _∷_)
 open import Data.Maybe using (Maybe; just; nothing)
 open import Data.String using (String; toList)
@@ -232,21 +232,24 @@ postulate
 -- Типизированные валюта и сумма (Ур.1): невалидные конфиги непредставимы
 ------------------------------------------------------------------------
 
--- Валюта: НЕ-пустой СТРОЧНЫЙ ISO-код ("usd"/"eur"); умный конструктор
--- mkCurrency = парсер, верхний регистр/пустота отклоняются до сети.
+-- Валюта: НЕ-пустой СТРОЧНЫЙ ISO-код ИЗ РОВНО ТРЁХ строчных ASCII-букв
+-- (все ISO-4217 коды трёхбуквенные: "usd"/"eur"/...; умный конструктор
+-- mkCurrency = парсер, верхний регистр/пустота/чужая длина отклоняются до сети).
 data Currency : Set where
   isoCur : (code : String) → ¬ (code ≡ "") → Currency
 
 curCode : Currency → String
 curCode (isoCur c _) = c
 
--- все символы — строчные ASCII-латинские буквы (a-z)
-lowerIsoᵇ : List Char → Bool
-lowerIsoᵇ [] = true
-lowerIsoᵇ (c ∷ cs) = (primIsAscii c ∧ primIsLower c) ∧ lowerIsoᵇ cs
+-- ровно три строчные ASCII-латинские буквы (a-z)
+lowerIso3ᵇ : List Char → Bool
+lowerIso3ᵇ (a ∷ b ∷ d ∷ []) = (primIsAscii a ∧ primIsLower a)
+                            ∧ ((primIsAscii b ∧ primIsLower b)
+                            ∧ (primIsAscii d ∧ primIsLower d))
+lowerIso3ᵇ _ = false
 
 mkCurrency : String → Maybe Currency
-mkCurrency c with lowerIsoᵇ (primStringToList c) | c ≟ ""
+mkCurrency c with lowerIso3ᵇ (primStringToList c) | c ≟ ""
 ... | true  | no ne = just (isoCur c ne)
 ... | _     | _     = nothing
 

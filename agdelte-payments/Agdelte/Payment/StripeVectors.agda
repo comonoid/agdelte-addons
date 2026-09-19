@@ -37,6 +37,10 @@ vectors =
   , "cs_test_123-ok"
   , "cs_test_123-ok" )
   ∷
+  ( "success_url-emoji"
+  , "оплата 💳 曲🎉"
+  , "%D0%BE%D0%BF%D0%BB%D0%B0%D1%82%D0%B0%20%F0%9F%92%B3%20%E6%9B%B2%F0%9F%8E%89" )
+  ∷
   ( "success_url-unicode"
   , "Путь в точку — 10 встреч"
   , "%D0%9F%D1%83%D1%82%D1%8C%20%D0%B2%20%D1%82%D0%BE%D1%87%D0%BA%D1%83%20%E2%80%94%2010%20%D0%B2%D1%81%D1%82%D1%80%D0%B5%D1%87" )
@@ -69,6 +73,10 @@ vectors =
   , "cs_test_123-ok"
   , "cs_test_123-ok" )
   ∷
+  ( "cancel_url-emoji"
+  , "оплата 💳 曲🎉"
+  , "%D0%BE%D0%BF%D0%BB%D0%B0%D1%82%D0%B0%20%F0%9F%92%B3%20%E6%9B%B2%F0%9F%8E%89" )
+  ∷
   ( "cancel_url-unicode"
   , "Путь в точку — 10 встреч"
   , "%D0%9F%D1%83%D1%82%D1%8C%20%D0%B2%20%D1%82%D0%BE%D1%87%D0%BA%D1%83%20%E2%80%94%2010%20%D0%B2%D1%81%D1%82%D1%80%D0%B5%D1%87" )
@@ -96,6 +104,10 @@ vectors =
   ( "client_reference_id-ascii"
   , "cs_test_123-ok"
   , "cs_test_123-ok" )
+  ∷
+  ( "client_reference_id-emoji"
+  , "оплата 💳 曲🎉"
+  , "%D0%BE%D0%BF%D0%BB%D0%B0%D1%82%D0%B0%20%F0%9F%92%B3%20%E6%9B%B2%F0%9F%8E%89" )
   ∷
   ( "client_reference_id-unicode"
   , "Путь в точку — 10 встреч"
@@ -209,6 +221,10 @@ vectors =
   , "cs_test_123-ok"
   , "cs_test_123-ok" )
   ∷
+  ( "line_items-product_data-name-emoji"
+  , "оплата 💳 曲🎉"
+  , "%D0%BE%D0%BF%D0%BB%D0%B0%D1%82%D0%B0%20%F0%9F%92%B3%20%E6%9B%B2%F0%9F%8E%89" )
+  ∷
   ( "line_items-product_data-name-unicode"
   , "Путь в точку — 10 встреч"
   , "%D0%9F%D1%83%D1%82%D1%8C%20%D0%B2%20%D1%82%D0%BE%D1%87%D0%BA%D1%83%20%E2%80%94%2010%20%D0%B2%D1%81%D1%82%D1%80%D0%B5%D1%87" )
@@ -237,6 +253,10 @@ vectors =
   , "cs_test_123-ok"
   , "cs_test_123-ok" )
   ∷
+  ( "line_items-product_data-description-emoji"
+  , "оплата 💳 曲🎉"
+  , "%D0%BE%D0%BF%D0%BB%D0%B0%D1%82%D0%B0%20%F0%9F%92%B3%20%E6%9B%B2%F0%9F%8E%89" )
+  ∷
   ( "line_items-product_data-description-unicode"
   , "Путь в точку — 10 встреч"
   , "%D0%9F%D1%83%D1%82%D1%8C%20%D0%B2%20%D1%82%D0%BE%D1%87%D0%BA%D1%83%20%E2%80%94%2010%20%D0%B2%D1%81%D1%82%D1%80%D0%B5%D1%87" )
@@ -264,6 +284,10 @@ vectors =
   ( "line_items-product_data-unit_label-ascii"
   , "cs_test_123-"
   , "cs_test_123-" )
+  ∷
+  ( "line_items-product_data-unit_label-emoji"
+  , "оплата 💳 曲�"
+  , "%D0%BE%D0%BF%D0%BB%D0%B0%D1%82%D0%B0%20%F0%9F%92%B3%20%E6%9B%B2%EF%BF%BD" )
   ∷
   ( "line_items-product_data-unit_label-unicode"
   , "Путь в точку"

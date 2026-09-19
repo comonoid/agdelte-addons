@@ -21,13 +21,12 @@
 -- доказательство < 256 (Byte = Σ ℕ (_< 256)); границы выводятся из
 -- m<n*o⇒m/o<n и m%n<n (Data.Nat.DivMod).
 --
--- ГРАНИЦА ТЕОРЕМЫ (честно): для codepoint'ов ≥ 0x10000 (астральная плоскость,
--- эмодзи) энкодер выдаёт 3-байтовую форму с первым байтом ≥ 256 — это
--- расходится с Haskell (там честный 4-байтовый UTF-8, зеркальные тесты эту
--- зону не покрывают; известный баг, не чинился в рамках этой задачи).
--- Поэтому formEnc-safe сформулирована при гипотезе WFList: все символы
--- строки < 0x10000, т.е. вся BMP (ASCII, кириллица, CJK). Для астральных
--- символов encChar идёт по legacy ℕ-пути (utf8/encodeByte/hexDigit ниже).
+-- ГРАНИЦА ТЕОРЕМЫ (честно): для codepoint'ов ≥ 0x400000 энкодер идёт по
+-- legacy-пути, и Safe на них не распространяется — это ВНЕ реального
+-- Unicode (весь Unicode < 0x110000). Астральная плоскость (эмодзи,
+-- 0x10000..0x10FFFF) с версии фикса идёт по ЧЕСТНОМУ 4-байтовому UTF-8
+-- (utf8B4), совпадающему с Haskell, и входит в теорему. Гипотеза WFList:
+-- все символы строки < 0x400000 — т.е. весь реальный Unicode с запасом.
 module Agdelte.Payment.StripeForm where
 
 open import Agda.Builtin.Char using (Char)
@@ -133,7 +132,35 @@ private
       b3 = 128 + n % 64 , <-trans (+-monoʳ-< 128 r<64) (s<s (m≤n+m 192 63))
 
   ------------------------------------------------------------------
-  -- Legacy (ℕ-путь) — только fallback для codepoints ≥ 0x10000; см. шапку.
+  -- 4-байтовая ветка (астральная плоскость): ФИКС — раньше codepoints
+  -- ≥ 0x10000 шли по legacy 3-байтовому пути (расхождение с Haskell,
+  -- известный баг); теперь честный 4-байтовый UTF-8, совпадающий с ним
+  ------------------------------------------------------------------
+
+  utf8B4 : (n : ℕ) → n < 4194304 → List Byte
+  utf8B4 n n<4M =
+    b1 ∷ b2 ∷ b3 ∷ b4 ∷ []
+    where
+      q0<16 : n / 262144 < 16
+      q0<16 = m<n*o⇒m/o<n n<4M               -- n < 16 * 262144 = 4194304
+      q1<64 : (n / 4096) % 64 < 64
+      q1<64 = m%n<n (n / 4096) 64
+      q2<64 : (n / 64) % 64 < 64
+      q2<64 = m%n<n (n / 64) 64
+      r<64 : n % 64 < 64
+      r<64 = m%n<n n 64
+      b1 : Byte
+      b1 = 240 + n / 262144 , +-monoʳ-< 240 q0<16        -- 240 + q0 < 240 + 16 = 256
+      b2 : Byte
+      b2 = 128 + (n / 4096) % 64 , <-trans (+-monoʳ-< 128 q1<64) (s<s (m≤n+m 192 63))
+      b3 : Byte
+      b3 = 128 + (n / 64) % 64 , <-trans (+-monoʳ-< 128 q2<64) (s<s (m≤n+m 192 63))
+      b4 : Byte
+      b4 = 128 + n % 64 , <-trans (+-monoʳ-< 128 r<64) (s<s (m≤n+m 192 63))
+
+  ------------------------------------------------------------------
+  -- Legacy (ℕ-путь) — только fallback для codepoints ≥ 0x400000
+  -- (вне реального Unicode, см. WFList ниже); в Safe-теорему не входит
   ------------------------------------------------------------------
 
   hexDigit : ℕ → Char
@@ -155,7 +182,9 @@ private
   encCharB true  c = c ∷ []
   encCharB false c with toℕ c <? 65536
   ...   | yes p = cat (map encodeByteB (utf8B (toℕ c) p))
-  ...   | no  _ = cat (map encodeByte (utf8 (toℕ c)))  -- астральная плоскость: см. шапку
+  ...   | no _ with toℕ c <? 4194304
+  ...     | yes q = cat (map encodeByteB (utf8B4 (toℕ c) q))   -- честный 4-байтовый UTF-8
+  ...     | no  _ = cat (map encodeByte (utf8 (toℕ c)))        -- вне Unicode: fallback, см. шапку
 
   encChar : Char → List Char
   encChar c = encCharB (unres? (toℕ c)) c
@@ -257,21 +286,24 @@ private
   bool-case true  f _ = f refl
   bool-case false _ g = g refl
 
-  encChar-safe : ∀ c → toℕ c < 65536 → Safe (encChar c)
-  encChar-safe c p = bool-case (unres? (toℕ c)) (true-case c p) (false-case c p)
+  encChar-safe : ∀ c → toℕ c < 4194304 → Safe (encChar c)
+  encChar-safe c p = bool-case (unres? (toℕ c)) (true-case c) (false-case c p)
     where
-      true-case : ∀ c → toℕ c < 65536 → unres? (toℕ c) ≡ true → Safe (encChar c)
-      true-case c _ eq rewrite eq = unres-¬sep c eq ∷ []
+      true-case : ∀ c → unres? (toℕ c) ≡ true → Safe (encChar c)
+      true-case c eq rewrite eq = unres-¬sep c eq ∷ []
 
-      false-case : ∀ c → toℕ c < 65536 → unres? (toℕ c) ≡ false → Safe (encChar c)
+      false-case : ∀ c → toℕ c < 4194304 → unres? (toℕ c) ≡ false → Safe (encChar c)
       false-case c p eq rewrite eq with toℕ c <? 65536
       ...   | yes q = safe-cat (map encodeByteB (utf8B (toℕ c) q))
                           (safe-map encodeByteB encodeByteB-safe (utf8B (toℕ c) q))
-      ...   | no nq = ⊥-elim (nq p)
+      ...   | no _ with toℕ c <? 4194304
+      ...     | yes r = safe-cat (map encodeByteB (utf8B4 (toℕ c) r))
+                            (safe-map encodeByteB encodeByteB-safe (utf8B4 (toℕ c) r))
+      ...     | no nq = ⊥-elim (nq p)
 
   data WFList : List Char → Set where
     []  : WFList []
-    _∷_ : ∀ c cs → toℕ c < 65536 → WFList cs → WFList (c ∷ cs)
+    _∷_ : ∀ c cs → toℕ c < 4194304 → WFList cs → WFList (c ∷ cs)
 
   go-safe : ∀ cs → WFList cs → Safe (go cs)
   go-safe [] [] = []

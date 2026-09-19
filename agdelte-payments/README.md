@@ -45,9 +45,12 @@ the standard library.
   `CheckoutOk` requires a proof `url ≢ "` (an empty confirmationUrl is
   unrepresentable). Spec-derived form vectors: `scripts/gen-form-vectors.mjs`
   reads the Stripe OpenAPI spec (`spec/openapi.json`, NOT committed) and
-  generates `Agdelte.Payment.StripeVectors` (65 vectors × 3 checks:
-  expected / mirror vs Haskell / no-sep) — the spec-vs-client conformance
-  layer of the form encoder.
+  generates `Agdelte.Payment.StripeVectors` (71 vectors × 3 checks:
+  expected / mirror vs Haskell / no-sep; ВКЛЮЧАЯ астральные пробы-эмодзи —
+  пин фикса 4-байтового UTF-8) — the spec-vs-client conformance
+  layer of the form encoder. `scripts/check-stripe-vectors.sh` regenerates
+  and requires byte-equality (spec-drift alarm); `agdelte` `test:stripe-mock`
+  runs a network smoke against the vendored stripe-mock binary.
 - `Agdelte.Payment.Common` — shared plumbing: THE `HttpManager` postulate
   (`type HC.Manager` / `newHttpManager`) and its own IO combinators. The manager
   type must be postulated exactly once (two identical postulates would be
