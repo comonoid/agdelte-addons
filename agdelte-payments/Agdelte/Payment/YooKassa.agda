@@ -88,13 +88,13 @@ open import Agdelte.Payment.YooKassaForm public
   -- POST /v3/payments. amount приходит УЖЕ отформатированным ("R.KK",
   -- Agda fmtAmount) — FFI не переформатывает, берёт как есть.
   -- (0, paymentId, confirmUrl) on success; (httpStatus, errText, "") on error.
-  createPaymentRawHS :: HC.Manager -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text
+  createPaymentRawHS :: HC.Manager -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text
                      -> IO (Integer, T.Text, T.Text)
-  createPaymentRawHS mgr shopId secretKey amount desc returnUrl idemKey metadata = do
+  createPaymentRawHS mgr shopId secretKey currency amount desc returnUrl idemKey metadata = do
     let body = encode $ object
           [ "amount" .= object
               [ "value" .= amount
-              , "currency" .= ("RUB" :: T.Text)
+              , "currency" .= currency
               ]
           , "confirmation" .= object
               [ "type" .= ("redirect" :: T.Text)
@@ -256,7 +256,7 @@ curCode azn = "AZN"
 curCode amd = "AMD"
 
 postulate
-  createPaymentRaw : HttpManager → String → String → String → String → String → String → String
+  createPaymentRaw : HttpManager → String → String → String → String → String → String → String → String
                    → IO RawTriple
   -- status fetch for non-webhook consumers (the webhook path itself trusts the
   -- SIGNED event after verifyWebhookSig — no re-fetch in webhookTx)
@@ -278,7 +278,7 @@ createPayment : HttpManager → String → String → Currency → Positive → 
               → String → String
               → IO PaymentResult
 createPayment mgr shopId key cur amt desc ret idem meta =
-  createPaymentRaw mgr shopId key (fmtAmount amt) desc ret idem meta >>= λ r →
+  createPaymentRaw mgr shopId key (curCode cur) (fmtAmount amt) desc ret idem meta >>= λ r →
   resolve (rtNat r) (rtFst r) (rtSnd r)
   where
     -- успех: (0, paymentId, url); ошибка: (httpStatus|0, errText, "").

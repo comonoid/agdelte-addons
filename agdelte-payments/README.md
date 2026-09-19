@@ -15,7 +15,13 @@ the standard library.
   (minor units, zero unrepresentable); `PaymentOk` carries a PROOF
   `url ≢ ""`; `parseWebhookFields` returns a typed `YooKassaEvent`
   (`PaymentSucceeded` / `PaymentCanceled` / `Unrecognized`) so the server
-  dispatcher is exhaustive by construction.
+  dispatcher is exhaustive by construction. **Currency reachability**: the
+  chosen `Currency` is passed to the FFI and sent in the body (a regression
+  where the body hardcoded RUB is pinned by the mock smoke, see
+  `agdelte` `test:yk-mock`).
+  Theorems (Ур.3): `fmt-safe` — the formatted amount NEVER contains raw `"` or
+  `\` (JSON-safe for ALL inputs, no hypotheses); `fmt-roundtrip` —
+  `parseAmount (fmtList p) ≡ amountOf p` (format → parse is the identity).
 - `Agdelte.Payment.YooKassaForm` — Agda mirror of the Haskell `fmtKop` amount
   formatter (kopecks → `"R.KK"`, contract from the spec's
   `MonetaryAmount.value`). Level-3 invariant: the output NEVER contains raw
@@ -50,6 +56,26 @@ the standard library.
 
 Room for a future provider-neutral interface in the same library. A domain wires
 these primitives to its own handlers/state.
+
+## Webhook signature model (ЮKassa vs Stripe)
+
+ЮKassa does NOT sign its webhook notifications — there is no official
+HMAC over the body (unlike Stripe's `Stripe-Signature`). The official
+protection mechanism is an **IP allowlist** of ЮKassa notification senders,
+configured on the receiving side. Therefore:
+
+- `verifyWebhookSig` for YooKassa is **defense-in-depth by agreement**: the
+  domain (e.g. cxm-pack-psych) sends its own HMAC in `x-yookassa-signature`
+  when the webhook passes through its own proxy/infrastructure, and the
+  client verifies it. It protects the proxy path, not against ЮKassa itself.
+- The real perimeter against third parties must be the IP allowlist on the
+  HTTP-server/proxy layer — client code cannot provide it.
+- Stripe, by contrast, is genuinely signed (`t=…,v1=…`, freshness 300s), and
+  `Agdelte.Payment.Stripe.verifyWebhookSig` implements the official scheme.
+
+Do not mistake the YooKassa `verifyWebhookSig` for an official-provider check:
+without the allowlist, an attacker posting a valid-looking body (with the
+HMAC, if the proxy key leaks) would pass.
 
 ## Install
 Register in `~/.agda/libraries`:
