@@ -21,8 +21,9 @@ open import Agda.Builtin.String using (String)
 open import Agda.Builtin.Bool using (Bool)
 open import Data.Nat using (ℕ)
 open import Data.Maybe using (Maybe; just; nothing)
-open import Data.Bool using (if_then_else_)
-open import Data.String.Properties using (_==_)
+open import Data.String.Properties using (_≟_)
+open import Relation.Nullary using (¬_)
+open import Relation.Binary.PropositionalEquality using (_≡_)
 
 open import Agdelte.Payment.Common
   using (HttpManager; _>>=_; pure)
@@ -201,9 +202,12 @@ postulate
 ------------------------------------------------------------------------
 
 -- | Result of a Stripe create-checkout-session call.
+-- Инвариант в типе: CheckoutOk несёт ДОКАЗАТЕЛЬСТВО url ≢ "" — «тихий pending
+-- с пустым confirmationUrl» (баг, найденный на stripe-mock-прогоне)
+-- непредставим: сервер физически не может сконструировать такой результат.
 data PaymentResult : Set where
-  CheckoutOk    : String → String → PaymentResult  -- sessionId, hosted url
-  CheckoutError : ℕ → String → PaymentResult       -- HTTP status (0 = network), error text
+  CheckoutOk    : (sid url : String) → ¬ (url ≡ "") → PaymentResult  -- sessionId, hosted url
+  CheckoutError : ℕ → String → PaymentResult                         -- HTTP status (0 = network), error text
 
 postulate
   createCheckoutSessionRaw : HttpManager → String → String → String → String → String → String
@@ -230,10 +234,14 @@ createCheckoutSession mgr account key cur amt desc success cancel cref meta idem
   resolve (rtNat r) (rtFst r) (rtSnd r)
   where
     open import Data.Nat using (zero; suc)
+    open import Relation.Nullary using (yes; no)
     resolve : ℕ → String → String → IO PaymentResult
     -- успех: (0, sessionId, url); ошибка: (httpStatus|0, errText, "").
     -- 0 Double-books (успех и сетевой сбой Haskell-клиента), различаем по url:
     -- пустой url при status 0 = сетевая ошибка → CheckoutError (не маскировать!).
-    resolve zero    sid url = pure (if url == "" then CheckoutError 0 sid
-                                    else CheckoutOk sid url)
+    -- Ветвление через Dec (а не Bool): в ветке `no ne` живёт доказательство
+    -- url ≢ "", которое и требуется конструктору CheckoutOk.
+    resolve zero    sid url with url ≟ ""
+    ... | yes _ = pure (CheckoutError 0 sid)
+    ... | no ne = pure (CheckoutOk sid url ne)
     resolve (suc n) err _   = pure (CheckoutError (suc n) err)

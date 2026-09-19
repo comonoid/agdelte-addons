@@ -17,6 +17,11 @@ the standard library.
   nested, injection-safe), `verifyWebhookSig` (`Stripe-Signature`:
   HMAC-SHA256(secret, `t <> "." <> body`) vs ANY v1, 300s freshness with `now`
   passed in from the caller).
+- `Agdelte.Payment.StripeForm` — Agda-side mirror of the Stripe form encoder
+  (`formEncS`, UTF-8 → percent-encoding); mirror vectors in `stripe-test` pin
+  it to the Haskell encoder. `PaymentResult` carries a typed invariant:
+  `CheckoutOk` requires a proof `url ≢ "` (an empty confirmationUrl is
+  unrepresentable).
 - `Agdelte.Payment.Common` — shared plumbing: THE `HttpManager` postulate
   (`type HC.Manager` / `newHttpManager`) and its own IO combinators. The manager
   type must be postulated exactly once (two identical postulates would be
